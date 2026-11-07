@@ -86,8 +86,10 @@ jobs:
           data = json.load(open("overlap.json"))
           assert len(data["collisions"]) == 2, data
           jobs = [set(collision["jobs"]) for collision in data["collisions"]]
-          assert {"nightly-backup", "healthcheck"} in jobs, jobs
-          assert {"cleanup", "nightly-backup", "healthcheck"} in jobs, jobs
+          assert jobs == [
+              {"cleanup", "healthcheck", "nightly-backup"},
+              {"healthcheck", "weekly-report"},
+          ], jobs
           PY
 
           # ignoring the noisy jobs makes it clean, exit 0
