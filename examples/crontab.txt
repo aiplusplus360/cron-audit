@@ -1,0 +1,25 @@
+# A small, realistic crontab used by the demo and the CLI contract.
+# It deliberately contains one job that collides with the backup and one that
+# was disabled by commenting it out -- which is exactly the kind of thing a
+# plain `crontab -l` does not tell you.
+
+SHELL=/bin/bash
+MAILTO=ops@example.com
+CRON_TZ=UTC
+
+# name: nightly-backup
+0 3 * * * /usr/local/bin/backup.sh --incremental
+
+# name: cleanup
+5 3 * * * /usr/local/bin/cleanup.sh --older-than 30d
+
+# name: weekly-report
+0 4 * * 1 /usr/local/bin/weekly-report.py --email ops@example.com
+
+# name: healthcheck
+*/10 * * * * /usr/local/bin/healthcheck.sh --json
+
+# name: warm-cache
+@reboot /usr/local/bin/warm-cache.sh
+
+# 30 2 * * * /usr/local/bin/legacy-export.sh

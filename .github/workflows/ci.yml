@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Doctests
+        run: |
+          python - <<'PY'
+          import doctest, importlib, sys
+          total = 0
+          for name in ("cronaudit", "cronaudit.expression", "cronaudit.crontab",
+                       "cronaudit.analysis", "cronaudit.cli"):
+              result = doctest.testmod(importlib.import_module(name))
+              print(name, result)
+              total += result.attempted
+              if result.failed:
+                  sys.exit(1)
+          assert total >= 5, total
+          PY
+
+      - name: Demo
+        run: python examples/demo.py
+
+      - name: CLI contract
+        run: |
+          set -euo pipefail
+
+          python -m cronaudit jobs examples/crontab.txt --json | tee jobs.json
+          python - <<'PY'
+          import json
+          data = json.load(open("jobs.json"))
+          names = [job["name"] for job in data["jobs"]]
+          assert names == ["nightly-backup", "cleanup", "weekly-report",
+                           "healthcheck", "warm-cache", "legacy-export.sh"], names
+          assert data["jobs"][-1]["disabled"] is True
+          assert data["jobs"][-2]["boot"] is True
+          assert data["env"]["MAILTO"] == "ops@example.com"
+          PY
+
+          python -m cronaudit expand examples/crontab.txt --job nightly-backup \
+            --count 2 --from 2026-03-02T00:00:00Z --json | tee expand.json
+          python - <<'PY'
+          import json
+          data = json.load(open("expand.json"))
+          assert data["next"]["nightly-backup"] == [
+              "2026-03-02T03:00:00+00:00",
+              "2026-03-03T03:00:00+00:00",
+          ], data
+          PY
+
+          # a collision exits 1 and names the offending jobs
+          set +e
+          python -m cronaudit check examples/crontab.txt \
+            --from 2026-03-02T00:00:00Z --until 2026-03-03T00:00:00Z \
+            --overlap-window 600 --json > overlap.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          python - <<'PY'
+          import json
+          data = json.load(open("overlap.json"))
+          assert len(data["collisions"]) == 2, data
+          jobs = [set(collision["jobs"]) for collision in data["collisions"]]
+          assert {"nightly-backup", "healthcheck"} in jobs, jobs
+          assert {"cleanup", "nightly-backup", "healthcheck"} in jobs, jobs
+          PY
+
+          # ignoring the noisy jobs makes it clean, exit 0
+          python -m cronaudit check examples/crontab.txt \
+            --from 2026-03-02T00:00:00Z --until 2026-03-03T00:00:00Z \
+            --overlap-window 600 --ignore healthcheck --ignore cleanup \
+            --json | tee clean.json
+          python - <<'PY'
+          import json
+          assert json.load(open("clean.json"))["collisions"] == []
+          PY
+
+          # drift exits 1 and reports every kind the example contains
+          set +e
+          python -m cronaudit drift examples/crontab.txt --runs examples/runs.json \
+            --from 2026-03-02T03:00:00Z --until 2026-03-02T04:25:00Z --json > drift.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          python - <<'PY'
+          import json
+          data = json.load(open("drift.json"))
+          assert data["counts"] == {"late": 1, "disabled": 1, "missed": 1,
+                                    "failed": 1, "slow": 1}, data["counts"]
+          kinds = {issue["kind"] for issue in data["issues"]}
+          assert kinds == {"late", "disabled", "missed", "failed", "slow"}, kinds
+          PY
+
+          python -m cronaudit parse "*/15 9-17 * * MON-FRI" --count 2 \
+            --from 2026-03-02T09:00:00Z --json | tee parse.json
+          python - <<'PY'
+          import json
+          data = json.load(open("parse.json"))
+          assert data["next"] == ["2026-03-02T09:00:00+00:00",
+                                  "2026-03-02T09:15:00+00:00"], data
+          PY
+
+          # bad input is a usage error, not a finding
+          set +e
+          python -m cronaudit parse "nonsense" 2> bad.txt
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "expected 5 fields" bad.txt
+
+          set +e
+          python -m cronaudit jobs does-not-exist.txt 2> missing.txt
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "cannot read" missing.txt
+
+  package:
+    name: build and install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Install wheel and run the console script
+        run: |
+          python -m pip install dist/*.whl
+          cron-audit jobs examples/crontab.txt
+          cron-audit parse "0 3 * * *" --count 2
+          python -c "import cronaudit; print(cronaudit.__version__)"

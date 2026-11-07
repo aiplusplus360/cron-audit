@@ -1,0 +1,16 @@
+{
+  "runs": [
+    {"job": "nightly-backup", "started": "2026-03-02T03:00:12Z", "exit_code": 0, "duration": 240},
+    {"job": "cleanup", "started": "2026-03-02T03:09:00Z", "exit_code": 0, "duration": 30},
+    {"job": "healthcheck", "started": "2026-03-02T03:00:02Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T03:10:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T03:20:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T03:30:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T03:40:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T03:50:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T04:00:01Z", "exit_code": 0, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T04:10:01Z", "exit_code": 2, "duration": 1},
+    {"job": "healthcheck", "started": "2026-03-02T04:20:00Z", "exit_code": 0, "duration": 700},
+    {"job": "legacy-export.sh", "started": "2026-03-02T03:30:00Z", "exit_code": 0}
+  ]
+}
